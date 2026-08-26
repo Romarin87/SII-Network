@@ -1,0 +1,42 @@
+# macOS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Swift / Xcode build output
+.build/
+build/
+.swiftpm/
+DerivedData/
+*.app
+*.dmg
+*.pkg
+*.zip
+*.xcarchive
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+
+# Python caches and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs, captures, and local scratch files
+*.log
+*.pcap
+*.pcapng
+*.tmp
+*.swp
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+config.json
+*.local.json
+*.local.plist
+Secrets/
