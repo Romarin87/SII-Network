@@ -13,11 +13,16 @@ final class NetworkMonitor: ObservableObject {
     let srun = SRunCoordinator()
 
     private let interfaceSampler = InterfaceSampler()
-    private let processSampler = ProcessNetworkSampler()
+    private var processSampler = ProcessNetworkSampler()
     private var fastTimer: Timer?
     private var detailTimer: Timer?
     private var publicIPTimer: Timer?
-    private var collectingDetails = false
+    private var samplesProcesses = false
+    private var samplesConnections = false
+    private var collectingProcesses = false
+    private var collectingConnections = false
+    private var processSamplingGeneration: UInt64 = 0
+    private var connectionSamplingGeneration: UInt64 = 0
 
     var downloadBytesPerSecond: Double {
         interfaces.filter(\.isActive).reduce(0) { $0 + $1.downloadBytesPerSecond }
@@ -29,15 +34,11 @@ final class NetworkMonitor: ObservableObject {
 
     init() {
         sampleInterfaces()
-        refreshDetails()
         if UserDefaults.standard.bool(forKey: "externalIPAutoRefresh") {
             refreshPublicIP()
         }
         fastTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.sampleInterfaces() }
-        }
-        detailTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshDetails() }
         }
         publicIPTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -69,17 +70,91 @@ final class NetworkMonitor: ObservableObject {
         if enabled { refreshPublicIP() }
     }
 
-    func refreshDetails() {
-        guard !collectingDetails else { return }
-        collectingDetails = true
+    func setDetailSampling(processes: Bool, connections: Bool) {
+        let shouldStartProcesses = processes && !samplesProcesses
+        let shouldStartConnections = connections && !samplesConnections
+
+        if processes != samplesProcesses {
+            samplesProcesses = processes
+            processSamplingGeneration &+= 1
+            if processes {
+                // Start with a fresh baseline after a pause so the first non-zero
+                // rate does not average traffic across the entire paused period.
+                processSampler = ProcessNetworkSampler()
+            } else {
+                self.processes = []
+            }
+        }
+        if connections != samplesConnections {
+            samplesConnections = connections
+            connectionSamplingGeneration &+= 1
+            if !connections { self.connections = [] }
+        }
+
+        updateDetailTimer()
+
+        if shouldStartProcesses { sampleProcesses() }
+        if shouldStartConnections { sampleConnections() }
+    }
+
+    private func updateDetailTimer() {
+        guard samplesProcesses || samplesConnections else {
+            detailTimer?.invalidate()
+            detailTimer = nil
+            return
+        }
+
+        guard detailTimer == nil else { return }
+        detailTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshRequestedDetails() }
+        }
+    }
+
+    private func refreshRequestedDetails() {
+        if samplesProcesses { sampleProcesses() }
+        if samplesConnections { sampleConnections() }
+    }
+
+    private func sampleProcesses() {
+        guard samplesProcesses, !collectingProcesses else { return }
+        collectingProcesses = true
+        let generation = processSamplingGeneration
         let processSampler = self.processSampler
-        Task {
+
+        Task { @MainActor [weak self] in
             let result = await Task.detached(priority: .utility) {
-                (processSampler.sample(), ConnectionSampler.sample())
+                processSampler.sample()
             }.value
-            processes = result.0
-            connections = result.1
-            collectingDetails = false
+            guard let self else { return }
+            self.collectingProcesses = false
+
+            guard self.samplesProcesses,
+                  self.processSamplingGeneration == generation else {
+                if self.samplesProcesses { self.sampleProcesses() }
+                return
+            }
+            self.processes = result
+        }
+    }
+
+    private func sampleConnections() {
+        guard samplesConnections, !collectingConnections else { return }
+        collectingConnections = true
+        let generation = connectionSamplingGeneration
+
+        Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                ConnectionSampler.sample()
+            }.value
+            guard let self else { return }
+            self.collectingConnections = false
+
+            guard self.samplesConnections,
+                  self.connectionSamplingGeneration == generation else {
+                if self.samplesConnections { self.sampleConnections() }
+                return
+            }
+            self.connections = result
         }
     }
 

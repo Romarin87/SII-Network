@@ -9,9 +9,9 @@
 - 支持字节/秒与比特/秒切换；
 - 显示外部 IPv4/IPv6 地址；
 - 使用 `SMAppService.mainApp` 设置登录 Mac 时自动启动；
-- 自动跟随 macOS 深色模式；
+- 支持跟随 macOS 外观，也可手动固定浅色或深色主题；
 - 同时监测以太网和 Wi-Fi 适配器；
-- 使用 `nettop` 显示每进程网络速率；
+- 使用 `nettop` 显示每进程网络速率与累计流量，并支持按列排序；进程与连接详情只在对应标签页可见时采样，关闭或最小化详细窗口后自动暂停；
 - 使用 `lsof` 显示当前用户可查看的 TCP/UDP socket；
 - 仅在检测到活动有线接口时检查 SRun 状态，并在掉线后尝试重新认证。
 
@@ -39,16 +39,18 @@ build/NetWatchSII.app
 
 ## 配置 SRun 自动重连
 
-首次使用前，在终端运行：
+双击应用后，点击菜单栏中的实时速度，选择“打开详细窗口”，进入“设置 → 校园网自动重连”，填写校园网账号和密码并点击“保存凭据”。密码会直接写入 macOS 钥匙串，不会进入命令参数、UserDefaults、配置文件或日志。
+
+如需单独测试 helper，也可以在仓库根目录运行：
 
 ```bash
 python3 Tools/sii_srun_autologin.py setup
 python3 Tools/sii_srun_autologin.py once --json
 ```
 
-`setup` 会交互式读取校园网账号和密码。账号保存在当前用户的 Application Support 目录，密码保存在 macOS 钥匙串；仓库内不保存任何真实凭据。
+`setup` 会交互式读取校园网账号和密码。它与应用内设置使用相同的配置目录和钥匙串项目。
 
-测试成功后，在应用设置中启用“SRun 有线网自动重连”。应用每次只调用 helper 的 `once --json`，并成为认证检查的唯一调度者。不要同时运行 helper 的 `watch` 或旧 LaunchAgent。
+保存凭据后，在应用设置中启用“SRun 有线网自动重连”。应用每次只调用包内 helper 的 `once --json`，并成为认证检查的唯一调度者。不要同时运行 helper 的 `watch` 或旧 LaunchAgent。
 
 helper 的独立使用方法见 [SRun helper 文档](docs/SRunHelper.md)。
 

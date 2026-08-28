@@ -8,6 +8,7 @@
 build/
 .swiftpm/
 DerivedData/
+Resources/AppIcon.icns
 *.app
 *.dmg
 *.pkg

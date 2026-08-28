@@ -20,6 +20,9 @@ struct MenuBarPanel: View {
     @AppStorage("speedUnit") private var speedUnitRaw = SpeedUnit.bytes.rawValue
 
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .bytes }
+    private var activeInterfaces: [InterfaceRate] {
+        monitor.interfaces.filter(\.isActive)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -31,23 +34,23 @@ struct MenuBarPanel: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 7) {
-                ForEach(monitor.interfaces) { item in
+                ForEach(activeInterfaces) { item in
                     HStack {
                         Image(systemName: item.kind.systemImage)
-                            .foregroundStyle(item.isActive ? .green : .secondary)
+                            .foregroundStyle(.green)
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(item.displayName).lineLimit(1)
                             Text(item.name).font(.caption2).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(item.isActive ? "已连接" : "未连接")
+                        Text("已连接")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
-                if monitor.interfaces.isEmpty {
-                    Text("没有发现以太网或 Wi-Fi 适配器")
+                if activeInterfaces.isEmpty {
+                    Text("没有活动的以太网或 Wi-Fi 适配器")
                         .foregroundStyle(.secondary)
                 }
             }

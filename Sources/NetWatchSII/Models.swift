@@ -8,12 +8,27 @@ enum SpeedUnit: String, CaseIterable, Identifiable {
     var title: String { self == .bytes ? "字节/秒" : "比特/秒" }
 
     func format(_ bytesPerSecond: Double, compact: Bool = false) -> String {
-        let clamped = max(0, bytesPerSecond)
+        formatValue(bytesPerSecond, isRate: true, compact: compact)
+    }
+
+    func formatTotal(_ bytes: UInt64, compact: Bool = false) -> String {
+        formatValue(Double(bytes), isRate: false, compact: compact)
+    }
+
+    private func formatValue(_ bytes: Double, isRate: Bool, compact: Bool) -> String {
+        let clamped = max(0, bytes)
         let value = self == .bits ? clamped * 8 : clamped
         let base = self == .bits ? 1_000.0 : 1_024.0
-        let units = self == .bits
-            ? ["bit/s", "Kbit/s", "Mbit/s", "Gbit/s", "Tbit/s"]
-            : ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"]
+        let units: [String]
+        if self == .bits {
+            units = isRate
+                ? ["bit/s", "Kbit/s", "Mbit/s", "Gbit/s", "Tbit/s"]
+                : ["bit", "Kbit", "Mbit", "Gbit", "Tbit"]
+        } else {
+            units = isRate
+                ? ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"]
+                : ["B", "KB", "MB", "GB", "TB"]
+        }
 
         var scaled = value
         var index = 0
@@ -61,6 +76,10 @@ struct ProcessNetworkRate: Identifiable {
     let pid: Int?
     let downloadBytesPerSecond: Double
     let uploadBytesPerSecond: Double
+    let totalReceivedBytes: UInt64
+    let totalSentBytes: UInt64
+
+    var pidSortValue: Int { pid ?? -1 }
 }
 
 struct ConnectionRecord: Identifiable {

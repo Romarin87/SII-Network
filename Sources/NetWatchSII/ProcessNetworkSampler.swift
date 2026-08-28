@@ -50,7 +50,9 @@ final class ProcessNetworkSampler {
                     name: name,
                     pid: pid,
                     downloadBytesPerSecond: Double(receivedDelta) / elapsed,
-                    uploadBytesPerSecond: Double(sentDelta) / elapsed
+                    uploadBytesPerSecond: Double(sentDelta) / elapsed,
+                    totalReceivedBytes: received,
+                    totalSentBytes: sent
                 )
             )
         }

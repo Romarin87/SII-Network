@@ -4,9 +4,13 @@ struct SettingsView: View {
     @ObservedObject var monitor: NetworkMonitor
     @ObservedObject var loginItem: LoginItemManager
     @AppStorage("speedUnit") private var speedUnitRaw = SpeedUnit.bytes.rawValue
+    @AppStorage("themeMode") private var themeModeRaw = ThemeMode.system.rawValue
     @AppStorage("alwaysOnTop") private var alwaysOnTop = true
     @AppStorage("srunAutoReconnect") private var srunAutoReconnect = false
     @AppStorage("externalIPAutoRefresh") private var externalIPAutoRefresh = false
+    @StateObject private var srunCredentials = SRunCredentialStore()
+    @State private var srunUsername = ""
+    @State private var srunPassword = ""
 
     var body: some View {
         Form {
@@ -17,8 +21,14 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                Picker("界面主题", selection: $themeModeRaw) {
+                    ForEach(ThemeMode.allCases) { theme in
+                        Text(theme.title).tag(theme.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
                 Toggle("详细窗口始终置顶", isOn: $alwaysOnTop)
-                Text("界面使用系统语义色，会自动跟随 macOS 深色模式。")
+                Text("可固定使用浅色或深色主题，也可随 macOS 外观自动切换。")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -42,7 +52,33 @@ struct SettingsView: View {
             Section("校园网自动重连") {
                 Toggle("启用 SRun 有线网自动重连", isOn: $srunAutoReconnect)
                 LabeledContent("状态", value: monitor.srun.status)
-                Text("初版调用随应用打包的 Python helper。请先运行 helper 的 setup 保存账号；应用只在检测到活动以太网接口时调用一次性检查。不要同时运行旧的 Python watch/LaunchAgent。")
+
+                TextField("校园网账号", text: $srunUsername)
+                    .textContentType(.username)
+                SecureField("校园网密码", text: $srunPassword)
+                    .textContentType(.password)
+                HStack {
+                    Button("保存凭据") {
+                        if srunCredentials.save(username: srunUsername, password: srunPassword) {
+                            srunUsername = srunCredentials.configuredUsername
+                            srunPassword = ""
+                        }
+                    }
+                    .disabled(
+                        srunUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || srunPassword.isEmpty
+                    )
+                    Spacer()
+                    LabeledContent("配置", value: srunCredentials.statusText)
+                }
+
+                if !srunCredentials.feedbackText.isEmpty {
+                    Text(srunCredentials.feedbackText)
+                        .font(.caption)
+                        .foregroundStyle(srunCredentials.feedbackIsError ? .red : .green)
+                }
+
+                Text("密码只保存在 macOS 钥匙串；账号和固定的官方认证参数保存在当前用户的应用支持目录。应用仅在检测到活动以太网接口时执行认证检查。")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -65,5 +101,11 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding(8)
+        .onAppear {
+            srunCredentials.refresh()
+            if srunUsername.isEmpty {
+                srunUsername = srunCredentials.configuredUsername
+            }
+        }
     }
 }

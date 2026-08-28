@@ -6,8 +6,10 @@
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
     <string>NetWatchSII</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>cn.edu.sii.NetWatchSII</string>
+    <string>io.github.Romarin87.SIINetwork</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
