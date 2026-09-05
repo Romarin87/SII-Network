@@ -11,6 +11,7 @@ final class NetworkMonitor: ObservableObject {
     @Published private(set) var lastUpdated = Date()
 
     let srun = SRunCoordinator()
+    let wifiAutomation = WiFiAutomationManager()
 
     private let interfaceSampler = InterfaceSampler()
     private var processSampler = ProcessNetworkSampler()
@@ -30,6 +31,10 @@ final class NetworkMonitor: ObservableObject {
 
     var uploadBytesPerSecond: Double {
         interfaces.filter(\.isActive).reduce(0) { $0 + $1.uploadBytesPerSecond }
+    }
+
+    var hasActiveWiredInterface: Bool {
+        interfaces.contains { $0.kind == .ethernet && $0.isActive }
     }
 
     init() {
@@ -68,6 +73,24 @@ final class NetworkMonitor: ObservableObject {
 
     func setExternalIPAutoRefresh(_ enabled: Bool) {
         if enabled { refreshPublicIP() }
+    }
+
+    func setWiFiAutomationEnabled(_ enabled: Bool) {
+        wifiAutomation.applyPreference(
+            isEnabled: enabled,
+            hasActiveWiredInterface: hasActiveWiredInterface
+        )
+    }
+
+    func retryWiFiAutomation() {
+        wifiAutomation.retry(
+            isEnabled: UserDefaults.standard.bool(forKey: "disableWiFiWhenWired"),
+            hasActiveWiredInterface: hasActiveWiredInterface
+        )
+    }
+
+    func prepareForTermination() {
+        wifiAutomation.restoreBeforeTermination()
     }
 
     func setDetailSampling(processes: Bool, connections: Bool) {
@@ -169,7 +192,11 @@ final class NetworkMonitor: ObservableObject {
             )
         )
         if history.count > 120 { history.removeFirst(history.count - 120) }
-        let wiredActive = interfaces.contains { $0.kind == .ethernet && $0.isActive }
+        let wiredActive = hasActiveWiredInterface
         srun.tick(hasActiveWiredInterface: wiredActive)
+        wifiAutomation.tick(
+            isEnabled: UserDefaults.standard.bool(forKey: "disableWiFiWhenWired"),
+            hasActiveWiredInterface: wiredActive
+        )
     }
 }

@@ -13,6 +13,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Charts"),
+                .linkedFramework("CoreWLAN"),
                 .linkedFramework("Security"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("SwiftUI")

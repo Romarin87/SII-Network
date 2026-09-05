@@ -86,7 +86,10 @@ struct MenuBarPanel: View {
                     NSApp.activate(ignoringOtherApps: true)
                 }
                 Spacer()
-                Button("退出") { NSApp.terminate(nil) }
+                Button("退出") {
+                    monitor.prepareForTermination()
+                    NSApp.terminate(nil)
+                }
             }
         }
         .padding(14)

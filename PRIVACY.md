@@ -7,7 +7,7 @@ NetWatch SII 不包含统计 SDK、广告 SDK 或远程日志服务。项目不�
 - 网卡名称、接口计数和传输速率只在应用内存中处理。
 - 进程名称、PID 和网络速率来自 macOS 的 `nettop`，只在本机界面显示。
 - TCP/UDP 端点来自 macOS 的 `lsof`，只在本机界面显示。
-- 显示偏好保存在 macOS `UserDefaults`，不包含校园网密码。
+- 显示偏好和 Wi-Fi 自动切换状态保存在 macOS `UserDefaults`，不包含校园网密码、Wi-Fi 名称、Wi-Fi 密码或硬件地址。
 
 应用当前没有把上述监测数据持久化，也不会把它们发送给项目维护者或第三方分析服务。
 

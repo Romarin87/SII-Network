@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage("themeMode") private var themeModeRaw = ThemeMode.system.rawValue
     @AppStorage("alwaysOnTop") private var alwaysOnTop = true
     @AppStorage("srunAutoReconnect") private var srunAutoReconnect = false
+    @AppStorage("disableWiFiWhenWired") private var disableWiFiWhenWired = false
     @AppStorage("externalIPAutoRefresh") private var externalIPAutoRefresh = false
     @StateObject private var srunCredentials = SRunCredentialStore()
     @State private var srunUsername = ""
@@ -47,6 +48,31 @@ struct SettingsView: View {
                 if loginItem.statusText == "等待用户批准" {
                     Button("打开系统登录项设置") { loginItem.openSystemSettings() }
                 }
+            }
+
+            Section("网络切换") {
+                Toggle(
+                    "连接有线网时自动关闭 Wi-Fi",
+                    isOn: Binding(
+                        get: { disableWiFiWhenWired },
+                        set: { enabled in
+                            disableWiFiWhenWired = enabled
+                            monitor.setWiFiAutomationEnabled(enabled)
+                        }
+                    )
+                )
+                LabeledContent("状态", value: monitor.wifiAutomation.status)
+                if !monitor.wifiAutomation.lastError.isEmpty {
+                    Text(monitor.wifiAutomation.lastError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Button("重试 Wi-Fi 切换") {
+                        monitor.retryWiFiAutomation()
+                    }
+                }
+                Text("有线网络稳定连接后关闭 Wi-Fi；网线拔出后，仅当 Wi-Fi 是由本程序关闭时才重新开启。首次切换时 macOS 可能要求管理员授权。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("校园网自动重连") {
