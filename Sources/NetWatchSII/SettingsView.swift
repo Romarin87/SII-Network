@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var monitor: NetworkMonitor
     @ObservedObject var loginItem: LoginItemManager
+    @ObservedObject private var wifiAutomation: WiFiAutomationManager
     @AppStorage("speedUnit") private var speedUnitRaw = SpeedUnit.bytes.rawValue
     @AppStorage("themeMode") private var themeModeRaw = ThemeMode.system.rawValue
     @AppStorage("alwaysOnTop") private var alwaysOnTop = true
@@ -12,6 +13,12 @@ struct SettingsView: View {
     @StateObject private var srunCredentials = SRunCredentialStore()
     @State private var srunUsername = ""
     @State private var srunPassword = ""
+
+    init(monitor: NetworkMonitor, loginItem: LoginItemManager) {
+        self.monitor = monitor
+        self.loginItem = loginItem
+        self.wifiAutomation = monitor.wifiAutomation
+    }
 
     var body: some View {
         Form {
@@ -61,16 +68,16 @@ struct SettingsView: View {
                         }
                     )
                 )
-                LabeledContent("状态", value: monitor.wifiAutomation.status)
-                if !monitor.wifiAutomation.lastError.isEmpty {
-                    Text(monitor.wifiAutomation.lastError)
+                LabeledContent("状态", value: wifiAutomation.status)
+                if !wifiAutomation.lastError.isEmpty {
+                    Text(wifiAutomation.lastError)
                         .font(.caption)
                         .foregroundStyle(.red)
                     Button("重试 Wi-Fi 切换") {
                         monitor.retryWiFiAutomation()
                     }
                 }
-                Text("有线网络稳定连接后关闭 Wi-Fi；网线拔出后，仅当 Wi-Fi 是由本程序关闭时才重新开启。首次切换时 macOS 可能要求管理员授权。")
+                Text("有线网络稳定连接后关闭 Wi-Fi 电源，并定期确认开关状态；拔线后恢复由本程序关闭的 Wi-Fi。macOS 可能要求管理员授权。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

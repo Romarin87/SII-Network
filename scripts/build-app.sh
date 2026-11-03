@@ -23,14 +23,16 @@ fi
 bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")"
 
 "$icon_generator" "$icon_source" "$icon_resource" >/dev/null
-swift build -c release --package-path "$project_dir"
+swift build -c release --package-path "$project_dir" "$@"
+binary_dir="$(swift build -c release --package-path "$project_dir" "$@" --show-bin-path)"
 
 /bin/rm -rf "$app_dir"
 /bin/mkdir -p "$contents_dir/MacOS" "$contents_dir/Resources"
-/bin/cp "$project_dir/.build/release/NetWatchSII" "$contents_dir/MacOS/NetWatchSII"
+/bin/cp "$binary_dir/NetWatchSII" "$contents_dir/MacOS/NetWatchSII"
 /bin/cp "$info_plist" "$contents_dir/Info.plist"
 
 /bin/cp "$icon_resource" "$contents_dir/Resources/AppIcon.icns"
+/bin/cp "$project_dir/Resources/MenuBarTemplate.png" "$contents_dir/Resources/MenuBarTemplate.png"
 /bin/cp "$helper_source" "$contents_dir/Resources/sii_srun_autologin.py"
 
 /bin/chmod 755 "$contents_dir/MacOS/NetWatchSII"

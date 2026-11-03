@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 在菜单栏实时显示总下载和上传速度；
+- 菜单栏显示 20 点自适应深浅色的小鸡布丁线稿图标，点击查看实时下载和上传速度；
 - 提供可缩放、可选始终置顶的详情窗口；
 - 支持字节/秒与比特/秒切换；
 - 显示外部 IPv4/IPv6 地址；
@@ -12,6 +12,7 @@
 - 支持跟随 macOS 外观，也可手动固定浅色或深色主题；
 - 同时监测以太网和 Wi-Fi 适配器；
 - 可选在有线网络连接时自动关闭 Wi-Fi，并在拔线后安全恢复由本程序关闭的 Wi-Fi；
+- Wi-Fi 电源每 5 秒核对一次，切换后验证实际状态；暂时失败时 30 秒后重试，睡眠唤醒后重新检查；
 - 使用 `nettop` 显示每进程网络速率与累计流量，并支持按列排序；进程与连接详情只在对应标签页可见时采样，关闭或最小化详细窗口后自动暂停；
 - 使用 `lsof` 显示当前用户可查看的 TCP/UDP socket；
 - 仅在检测到活动有线接口时检查 SRun 状态，并在掉线后尝试重新认证。
@@ -30,6 +31,8 @@ cd SII-Network
 ./scripts/build-app.sh
 ```
 
+构建脚本也接受 `swift build` 参数，例如 `--sdk /path/to/MacOSX.sdk`，并自动定位当前构建引擎的可执行文件输出目录。
+
 应用包生成在：
 
 ```text
@@ -40,7 +43,7 @@ build/NetWatchSII.app
 
 ## 配置 SRun 自动重连
 
-双击应用后，点击菜单栏中的实时速度，选择“打开详细窗口”，进入“设置 → 校园网自动重连”，填写校园网账号和密码并点击“保存凭据”。密码会直接写入 macOS 钥匙串，不会进入命令参数、UserDefaults、配置文件或日志。
+双击应用后，点击菜单栏中的小鸡布丁图标，选择“打开详细窗口”，进入“设置 → 校园网自动重连”，填写校园网账号和密码并点击“保存凭据”。密码会直接写入 macOS 钥匙串，不会进入命令参数、UserDefaults、配置文件或日志。
 
 如需单独测试 helper，也可以在仓库根目录运行：
 
@@ -59,6 +62,8 @@ helper 的独立使用方法见 [SRun helper 文档](docs/SRunHelper.md)。
 
 ```bash
 swift build
+bash scripts/test-menu-icon.sh
+bash scripts/test-wifi-automation.sh
 python3 -m unittest discover -s Tests/Python -p 'test_*.py'
 ```
 

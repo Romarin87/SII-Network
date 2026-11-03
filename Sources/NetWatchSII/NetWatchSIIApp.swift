@@ -17,7 +17,9 @@ struct NetWatchSIIApp: App {
             MenuBarPanel(monitor: monitor)
                 .preferredColorScheme(themeMode.preferredColorScheme)
         } label: {
-            MenuBarSpeedLabel(monitor: monitor)
+            Image(nsImage: MenuBarIcon.image)
+                .renderingMode(.template)
+                .accessibilityLabel("NetWatch SII 网络监测")
         }
         .menuBarExtraStyle(.window)
 

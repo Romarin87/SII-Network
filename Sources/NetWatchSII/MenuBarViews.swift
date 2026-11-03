@@ -1,19 +1,6 @@
 import AppKit
 import SwiftUI
 
-struct MenuBarSpeedLabel: View {
-    @ObservedObject var monitor: NetworkMonitor
-    @AppStorage("speedUnit") private var speedUnitRaw = SpeedUnit.bytes.rawValue
-
-    private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .bytes }
-
-    var body: some View {
-        Text("↓\(unit.format(monitor.downloadBytesPerSecond, compact: true))  ↑\(unit.format(monitor.uploadBytesPerSecond, compact: true))")
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .monospacedDigit()
-    }
-}
-
 struct MenuBarPanel: View {
     @ObservedObject var monitor: NetworkMonitor
     @Environment(\.openWindow) private var openWindow

@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import CoreWLAN
 import Foundation
 
 enum WiFiAutomationAction: Equatable {
@@ -31,83 +30,82 @@ final class WiFiAutomationManager: NSObject, ObservableObject {
     @Published private(set) var status = "未启用"
     @Published private(set) var lastError = ""
 
-    private struct ReconciliationKey: Equatable {
+    private struct Input: Equatable {
         let isEnabled: Bool
         let wiredIsActive: Bool
-        let wifiWasDisabledByApp: Bool
     }
 
-    private static let ownershipKey = "wifiDisabledByEthernetAutomation"
-    private static let requiredStableSamples = 2
-
-    private let defaults = UserDefaults.standard
-    private var lastObservedWiredState: Bool?
+    static let ownershipKey = "wifiDisabledByEthernetAutomation"
+    private let defaults: UserDefaults
+    private let power: WiFiPowerControlling
+    private let now: () -> Date
+    private var input: Input?
     private var stableSampleCount = 0
-    private var lastReconciliation: ReconciliationKey?
-    private var lastEnabledState: Bool?
+    private var revision: UInt64 = 0
+    private var nextCheck = Date.distantPast
+    private var isChecking = false
+    private var terminating = false
 
-    override init() {
+    init(
+        defaults: UserDefaults = .standard,
+        power: WiFiPowerControlling = SystemWiFiPowerController(),
+        now: @escaping () -> Date = Date.init,
+        observeLifecycle: Bool = true
+    ) {
+        self.defaults = defaults
+        self.power = power
+        self.now = now
         super.init()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(applicationWillTerminate(_:)),
-            name: NSApplication.willTerminateNotification,
-            object: nil
-        )
+        if observeLifecycle {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(applicationWillTerminate(_:)),
+                name: NSApplication.willTerminateNotification, object: nil
+            )
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self, selector: #selector(systemDidWake(_:)),
+                name: NSWorkspace.didWakeNotification, object: nil
+            )
+        }
     }
 
     func tick(isEnabled: Bool, hasActiveWiredInterface wiredIsActive: Bool) {
-        if lastEnabledState != isEnabled {
-            lastEnabledState = isEnabled
-            lastReconciliation = nil
-        }
-
-        if !isEnabled, wifiWasDisabledByApp {
-            reconcile(isEnabled: false, wiredIsActive: wiredIsActive)
-            return
-        }
-
-        if lastObservedWiredState == wiredIsActive {
-            stableSampleCount += 1
-        } else {
-            lastObservedWiredState = wiredIsActive
+        guard !terminating else { return }
+        let observed = Input(isEnabled: isEnabled, wiredIsActive: wiredIsActive)
+        if input != observed {
+            input = observed
             stableSampleCount = 1
+            revision &+= 1
+            nextCheck = .distantPast
+        } else {
+            stableSampleCount = min(2, stableSampleCount + 1)
         }
-
-        guard stableSampleCount >= Self.requiredStableSamples else {
-            if isEnabled {
-                setStatus("正在确认网络状态…")
-            } else {
-                setStatus("未启用")
-            }
+        guard !isEnabled || stableSampleCount >= 2 else {
+            setStatus("正在确认网络状态…")
             return
         }
-
-        reconcile(isEnabled: isEnabled, wiredIsActive: wiredIsActive)
+        reconcileIfDue()
     }
 
     func applyPreference(isEnabled: Bool, hasActiveWiredInterface wiredIsActive: Bool) {
-        lastEnabledState = isEnabled
-        lastObservedWiredState = wiredIsActive
-        stableSampleCount = Self.requiredStableSamples
-        lastReconciliation = nil
-        reconcile(isEnabled: isEnabled, wiredIsActive: wiredIsActive)
+        nextCheck = .distantPast
+        tick(isEnabled: isEnabled, hasActiveWiredInterface: wiredIsActive)
     }
 
     func retry(isEnabled: Bool, hasActiveWiredInterface wiredIsActive: Bool) {
-        lastReconciliation = nil
-        reconcile(isEnabled: isEnabled, wiredIsActive: wiredIsActive)
+        nextCheck = .distantPast
+        tick(isEnabled: isEnabled, hasActiveWiredInterface: wiredIsActive)
     }
 
     func restoreBeforeTermination() {
-        guard wifiWasDisabledByApp,
-              let interface = CWWiFiClient.shared().interface() else { return }
+        guard !terminating else { return }
+        terminating = true
+        guard wifiWasDisabledByApp else { return }
         do {
-            try interface.setPower(true)
+            // The controller serializes this with any pending power operation.
+            try power.restoreBeforeTermination()
             wifiWasDisabledByApp = false
         } catch {
-            // Termination cannot be delayed safely here. Keep the ownership marker
-            // so the next launch can retry restoring Wi-Fi.
+            // Retain the marker so the next launch can recover the power state.
         }
     }
 
@@ -116,119 +114,98 @@ final class WiFiAutomationManager: NSObject, ObservableObject {
         set { defaults.set(newValue, forKey: Self.ownershipKey) }
     }
 
-    private func reconcile(isEnabled: Bool, wiredIsActive: Bool) {
-        let key = ReconciliationKey(
-            isEnabled: isEnabled,
-            wiredIsActive: wiredIsActive,
-            wifiWasDisabledByApp: wifiWasDisabledByApp
-        )
-        guard key != lastReconciliation else { return }
-        lastReconciliation = key
-
-        let interface = CWWiFiClient.shared().interface()
-        let action = WiFiAutomationPolicy.action(
-            isEnabled: isEnabled,
-            wiredIsActive: wiredIsActive,
-            wifiIsPowered: interface?.powerOn(),
-            wifiWasDisabledByApp: wifiWasDisabledByApp
-        )
-
-        switch action {
-        case .turnPowerOn:
-            restoreWiFi(
-                using: interface,
-                statusOnSuccess: isEnabled
-                    ? "网线已拔出，Wi-Fi 已自动开启"
-                    : "已关闭自动切换，Wi-Fi 已恢复"
-            )
-
-        case .turnPowerOff:
-            guard let interface else {
-                lastReconciliation = nil
-                setFailure("未发现可控制的 Wi-Fi 接口。")
-                return
-            }
-
-            // Record ownership before changing power. If the app exits between the
-            // two operations, the next launch will still know it should restore Wi-Fi.
-            wifiWasDisabledByApp = true
-            do {
-                try interface.setPower(false)
-                rememberCurrentReconciliation(isEnabled: isEnabled, wiredIsActive: wiredIsActive)
-                setStatus("有线网络已连接，Wi-Fi 已自动关闭")
-            } catch {
-                if interface.powerOn() {
-                    wifiWasDisabledByApp = false
-                }
-                setFailure(powerErrorMessage(prefix: "无法自动关闭 Wi-Fi", error: error))
-            }
-
-        case .none:
-            guard isEnabled else {
-                setStatus("未启用")
-                return
-            }
-            guard let interface else {
-                lastReconciliation = nil
-                setFailure("未发现可控制的 Wi-Fi 接口。")
-                return
-            }
-            if wiredIsActive {
-                setStatus(wifiWasDisabledByApp ? "有线网络已连接，Wi-Fi 已关闭" : "Wi-Fi 原本已关闭")
-            } else {
-                setStatus(interface.powerOn() ? "等待有线网络连接" : "Wi-Fi 保持手动关闭")
-            }
-        }
-    }
-
-    private func restoreWiFi(using suppliedInterface: CWInterface?, statusOnSuccess: String) {
-        guard let interface = suppliedInterface ?? CWWiFiClient.shared().interface() else {
-            lastReconciliation = nil
-            setFailure("未发现可控制的 Wi-Fi 接口，暂时无法恢复 Wi-Fi。")
+    private func reconcileIfDue() {
+        guard let input, !terminating, !isChecking, now() >= nextCheck else { return }
+        guard input.isEnabled || wifiWasDisabledByApp else {
+            setStatus("未启用")
             return
         }
-        do {
-            if !interface.powerOn() {
-                try interface.setPower(true)
+        let startedRevision = revision
+        isChecking = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.isChecking = false
+                // A cable/preference change during an operation must be reconciled
+                // using the new input after the actual operation has finished.
+                if !self.terminating, self.revision != startedRevision {
+                    self.nextCheck = .distantPast
+                    if self.stableSampleCount >= 2 || self.input?.isEnabled == false {
+                        self.reconcileIfDue()
+                    }
+                }
             }
-            wifiWasDisabledByApp = false
-            rememberCurrentReconciliation(
-                isEnabled: lastEnabledState ?? false,
-                wiredIsActive: lastObservedWiredState ?? false
-            )
-            setStatus(statusOnSuccess)
-        } catch {
-            setFailure(powerErrorMessage(prefix: "无法自动开启 Wi-Fi", error: error))
+            do {
+                let powered = try await self.power.readPower()
+                guard !self.terminating, self.revision == startedRevision else { return }
+                let action = WiFiAutomationPolicy.action(
+                    isEnabled: input.isEnabled,
+                    wiredIsActive: input.wiredIsActive,
+                    wifiIsPowered: powered,
+                    wifiWasDisabledByApp: self.wifiWasDisabledByApp
+                )
+                switch action {
+                case .turnPowerOff:
+                    let previouslyOwned = self.wifiWasDisabledByApp
+                    self.wifiWasDisabledByApp = true
+                    self.setStatus("正在关闭 Wi-Fi 电源…")
+                    do {
+                        try await self.power.setPower(false)
+                    } catch {
+                        // Only roll back new ownership if the radio is confirmed on.
+                        // An unknown result may still require recovery after unplug.
+                        let afterFailure = try? await self.power.readPower()
+                        if !self.terminating, !previouslyOwned, afterFailure == true {
+                            self.wifiWasDisabledByApp = false
+                        }
+                        throw error
+                    }
+                    guard !self.terminating, self.revision == startedRevision else { return }
+                    self.setStatus("有线网络已连接，Wi-Fi 电源已关闭")
+
+                case .turnPowerOn:
+                    self.setStatus("正在恢复 Wi-Fi 电源…")
+                    if !powered { try await self.power.setPower(true) }
+                    guard !self.terminating else { return }
+                    self.wifiWasDisabledByApp = false
+                    guard self.revision == startedRevision else { return }
+                    self.setStatus(input.isEnabled
+                        ? "有线网络已断开，Wi-Fi 电源已开启"
+                        : "已关闭自动切换，Wi-Fi 电源已恢复")
+
+                case .none:
+                    self.setStatus(input.wiredIsActive
+                        ? "有线网络已连接，Wi-Fi 电源已关闭"
+                        : (powered ? "等待有线网络连接" : "Wi-Fi 保持手动关闭"))
+                }
+                // Check the radio itself periodically, even if Ethernet is unchanged.
+                self.nextCheck = self.now().addingTimeInterval(5)
+            } catch {
+                guard !self.terminating, self.revision == startedRevision else { return }
+                self.status = "自动切换待重试"
+                self.lastError = "\(error.localizedDescription) 30 秒后自动重试，也可点击重试按钮。"
+                self.nextCheck = self.now().addingTimeInterval(30)
+            }
         }
-    }
-
-    private func rememberCurrentReconciliation(isEnabled: Bool, wiredIsActive: Bool) {
-        lastReconciliation = ReconciliationKey(
-            isEnabled: isEnabled,
-            wiredIsActive: wiredIsActive,
-            wifiWasDisabledByApp: wifiWasDisabledByApp
-        )
-    }
-
-    private func powerErrorMessage(prefix: String, error: Error) -> String {
-        "\(prefix)：\(error.localizedDescription) 请在系统提示中授权后重试。"
     }
 
     private func setStatus(_ text: String) {
-        status = text
-        lastError = ""
-    }
-
-    private func setFailure(_ message: String) {
-        status = "自动切换失败"
-        lastError = message
+        if status != text { status = text }
+        if !lastError.isEmpty { lastError = "" }
     }
 
     @objc private func applicationWillTerminate(_ notification: Notification) {
         restoreBeforeTermination()
     }
 
+    @objc private func systemDidWake(_ notification: Notification) {
+        stableSampleCount = 0
+        revision &+= 1
+        nextCheck = .distantPast
+    }
+
     deinit {
         NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 }
